@@ -48,7 +48,7 @@ exports.validateCoupon = async (req, res, next) => {
             valid: true,
             message: 'Coupon Valid! Meal Served.',
             coupon: {
-                coupon_id: coupon.coupon_id_short,
+                coupon_id_short: coupon.coupon_id_short,
                 event_name: event.name,
                 food_details: event.description,
                 redeemed_at: coupon.redeemed_at

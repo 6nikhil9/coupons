@@ -28,9 +28,9 @@ function CouponTable({ coupons }) {
         </thead>
         <tbody className="bg-gray-800 divide-y divide-gray-700">
           {coupons.map((coupon) => (
-            <tr key={coupon.coupon_id}>
+            <tr key={coupon._id}>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                {coupon.coupon_id}
+                {coupon.coupon_id_short}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm">
                 <span

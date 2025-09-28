@@ -21,6 +21,5 @@ router.post('/:eventId/generate-coupons', protect, authorize('admin'), eventCont
 router.get('/:eventId/coupons', protect, authorize('admin'), eventController.getCouponsForEvent);
 
 // Dashboard stats (conceptually under events, for admin view)
-router.get('/dashboard-stats', protect, authorize('admin'), eventController.getDashboardStats);
 
 module.exports = router;
