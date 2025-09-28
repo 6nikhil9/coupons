@@ -1,0 +1,19 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar for better dark mode aesthetics (optional) */
+body::-webkit-scrollbar {
+  width: 8px;
+}
+body::-webkit-scrollbar-track {
+  background: #1f2937; /* gray-800 */
+}
+body::-webkit-scrollbar-thumb {
+  background-color: #4c5a6d; /* darker gray */
+  border-radius: 4px;
+}
+body::-webkit-scrollbar-thumb:hover {
+  background-color: #6b7280; /* gray-500 */
+}
