@@ -1,55 +1,62 @@
 // src/components/admin/AdminNavbar.jsx
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth'; // <-- IMPORT THE HOOK
+import { useAuth } from '../../hooks/useAuth';
 
 function AdminNavbar() {
-  const { logout } = useAuth(); // <-- GET LOGOUT DIRECTLY FROM CONTEXT
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
     logout();
-    navigate('/'); // Redirect to homepage after logout
+    navigate('/');
   };
 
   const navItems = [
-    { name: 'Dashboard', path: '/admin', icon: 'fas fa-chart-line' },
+    { name: 'Dashboard', path: '/admin/dashboard', icon: 'fas fa-chart-line' },
     { name: 'Events', path: '/admin/events', icon: 'fas fa-calendar-alt' },
-    { name: 'Coupon Management', path: '/admin/coupons', icon: 'fas fa-ticket-alt' },
+    { name: 'Coupons', path: '/admin/coupons', icon: 'fas fa-ticket-alt' },
+    // { name: 'Reports', path: '/admin/reports', icon: 'fas fa-file-alt' },
   ];
 
   return (
-    <nav className="w-64 bg-gray-800 p-6 flex flex-col shadow-lg">
-      <div className="flex items-center mb-10">
-        {/* Make sure you have a logo.png in your /public folder */}
-        <img src="/logo.png" alt="EventWise Logo" className="h-10 mr-3" />
-        <h2 className="text-2xl font-bold text-white">Admin</h2>
+    <nav className="w-64 bg-gray-800 p-6 flex flex-col shadow-lg border-r border-gray-700/50">
+      <div className="flex items-center mb-12">
+        <i className="fas fa-ticket-alt text-3xl text-purple-400"></i>
+        <h2 className="text-2xl font-bold text-white ml-3">EventWise</h2>
       </div>
-      <ul className="flex-grow">
+      <ul className="flex-grow space-y-2">
         {navItems.map((item) => (
-          <li key={item.name} className="mb-4">
+          <li key={item.name}>
             <NavLink
               to={item.path}
-              end={item.path === '/admin'}
               className={({ isActive }) =>
-                `flex items-center py-2 px-4 rounded-lg transition-colors duration-200 ${
-                  isActive ? 'bg-purple-600 text-white' : 'text-gray-300 hover:bg-gray-700'
+                `flex items-center py-2.5 px-4 rounded-lg transition-colors duration-200 text-gray-300 ${
+                  isActive ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-gray-700'
                 }`
               }
             >
-              <i className={`${item.icon} mr-3`}></i>
-              {item.name}
+              <i className={`${item.icon} mr-4 w-5 text-center`}></i>
+              <span className="font-medium">{item.name}</span>
             </NavLink>
           </li>
         ))}
       </ul>
-      <button
-        onClick={handleLogout} // <-- This now works correctly
-        className="flex items-center w-full mt-auto py-2 px-4 rounded-lg text-gray-300 hover:bg-red-700 hover:text-white transition-colors duration-200"
-      >
-        <i className="fas fa-sign-out-alt mr-3"></i>
-        Logout
-      </button>
+      <div className="space-y-2">
+         {/* Settings Button */}
+        <button className="flex items-center w-full py-2.5 px-4 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors">
+            <i className="fas fa-cog mr-4 w-5 text-center"></i>
+            <span className="font-medium">Settings</span>
+        </button>
+        {/* Logout Button */}
+        <button
+          onClick={handleLogout}
+          className="flex items-center w-full py-2.5 px-4 rounded-lg text-gray-300 hover:bg-red-700 hover:text-white transition-colors"
+        >
+          <i className="fas fa-sign-out-alt mr-4 w-5 text-center"></i>
+          <span className="font-medium">Logout</span>
+        </button>
+      </div>
     </nav>
   );
 }

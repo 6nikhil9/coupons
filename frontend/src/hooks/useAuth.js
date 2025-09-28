@@ -2,6 +2,10 @@
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 
+/**
+ * Custom hook to provide auth context.
+ * This is a best practice to avoid importing useContext and AuthContext in every component.
+ */
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

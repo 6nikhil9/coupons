@@ -2,46 +2,32 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-function EventCard({ event, onDelete, onEdit }) {
-  // Assuming 'event' object has _id, name, date, status, etc.
-  const formattedDate = new Date(event.date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+function EventCard({ event, onDelete }) {
+  const formattedDate = new Date(event.date).toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric'
   });
 
-  const statusColor = event.status === 'Active' ? 'bg-green-500' : 'bg-blue-500';
-
   return (
-    <div className="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col">
-      <div className="flex justify-between items-start mb-4">
-        <h3 className="text-xl font-semibold text-white">{event.name}</h3>
-        <span className={`${statusColor} text-white text-xs font-semibold px-2.5 py-0.5 rounded-full`}>
-          {event.status}
-        </span>
+    <div className="bg-gray-700/50 p-4 rounded-lg flex items-center justify-between hover:bg-gray-700 transition-all">
+      <div className="flex items-center">
+        <div className="flex-shrink-0 bg-purple-600 h-10 w-10 flex items-center justify-center rounded-lg mr-4">
+            <i className="fas fa-calendar-alt text-white"></i>
+        </div>
+        <div>
+            <p className="font-semibold text-white">{event.name}</p>
+            <p className="text-sm text-gray-400">{formattedDate} at {event.venue}</p>
+        </div>
       </div>
-      <p className="text-gray-400 mb-2 flex items-center">
-        <i className="fas fa-calendar-alt mr-2"></i> {formattedDate}
-      </p>
-      <p className="text-gray-400 mb-4 flex items-center">
-        <i className="fas fa-map-marker-alt mr-2"></i> {event.venue || 'N/A'}
-      </p>
-      <div className="mt-auto flex justify-end space-x-3">
-        <Link
-          to={`/admin/events/${event._id}/edit`}
-          className="text-indigo-400 hover:text-indigo-300 text-sm"
-        >
-          Edit
+      <div className="flex items-center space-x-3">
+        <Link to={`/admin/coupons/${event._id}`} title="Manage Coupons" className="text-gray-400 hover:text-white">
+          <i className="fas fa-ticket-alt"></i>
         </Link>
-        <Link
-          to={`/admin/coupons/${event._id}`}
-          className="bg-purple-600 hover:bg-purple-700 text-white text-sm py-1.5 px-3 rounded-md transition-colors duration-200"
-        >
-          Manage Coupons
+        <Link to={`/admin/events/edit/${event._id}`} title="Edit Event" className="text-gray-400 hover:text-white">
+          <i className="fas fa-pencil-alt"></i>
         </Link>
-        {/* <button onClick={() => onDelete(event._id)} className="text-red-400 hover:text-red-300 text-sm">
-          Delete
-        </button> */}
+        <button onClick={() => onDelete(event._id)} title="Delete Event" className="text-gray-400 hover:text-red-500">
+          <i className="fas fa-trash"></i>
+        </button>
       </div>
     </div>
   );

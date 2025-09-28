@@ -1,179 +1,110 @@
 // src/pages/VolunteerScanPage.jsx
-import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode'; // Import Html5QrcodeScanner
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import api from '../services/api';
 import Navbar from '../components/common/Navbar';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 function VolunteerScanPage() {
-  const [scanStatus, setScanStatus] = useState('idle'); // 'idle', 'scanning', 'success', 'fail'
-  const [errorMessage, setErrorMessage] = useState('');
-  const [isScanning, setIsScanning] = useState(false); // Controls scanner lifecycle
-  const html5QrCodeScannerRef = useRef(null); // Ref for the scanner instance
-  const { user } = useContext(AuthContext);
+  const [scanResult, setScanResult] = useState(null);
+  const [validationMessage, setValidationMessage] = useState('Initializing scanner...');
+  const [validationStatus, setValidationStatus] = useState('idle'); // idle, scanning, success, error
+  const scannerRef = useRef(null);
+  const { user } = useAuth();
 
-  const qrboxConfig = {
-    width: 250,
-    height: 250,
-  };
-  const fps = 10;
+  const handleScanSuccess = useCallback(async (decodedText) => {
+    // Prevent multiple scans of the same code
+    if (validationStatus !== 'idle') return;
 
-  // Callback for successful QR code scan
-  const onScanSuccess = useCallback(async (decodedText, decodedResult) => {
-    // Stop scanning once a QR code is detected
-    if (html5QrCodeScannerRef.current) {
-        try {
-            await html5QrCodeScannerRef.current.clear(); // Stop camera and clear scanner
-        } catch (error) {
-            console.warn("Failed to clear scanner:", error);
-        }
-    }
-    setIsScanning(false); // Update state
-
-    setScanStatus('scanning');
-    setErrorMessage('');
+    setValidationStatus('scanning');
+    setValidationMessage('Validating coupon...');
 
     try {
-      const qrPayload = JSON.parse(decodedText); // Expecting JSON from QR code
-
+      const qrPayload = JSON.parse(decodedText);
       const response = await api.post('/coupons/validate', {
         eventId: qrPayload.event_id,
         couponId: qrPayload.coupon_id,
         secureHash: qrPayload.secureHash,
-        validatorUsername: user ? user.username : 'unknown_validator',
       });
 
-      if (response.data.valid) {
-        setScanStatus('success');
-        setErrorMessage(`Coupon ${qrPayload.coupon_id} Validated Successfully!`);
-      } else {
-        setScanStatus('fail');
-        setErrorMessage(response.data.message || 'Coupon validation failed.');
-      }
+      setValidationStatus('success');
+      setScanResult(response.data.coupon);
+      setValidationMessage(response.data.message);
+
     } catch (err) {
-      setScanStatus('fail');
-      if (err instanceof SyntaxError) {
-        setErrorMessage('Invalid QR code format (expected JSON).');
-      } else if (err.response && err.response.data && err.response.data.message) {
-        setErrorMessage(`Validation Error: ${err.response.data.message}`);
+      setValidationStatus('error');
+      if (err.response) {
+        setValidationMessage(err.response.data.message);
+      } else if (err instanceof SyntaxError) {
+        setValidationMessage("Invalid QR Code: Data is not in the correct format.");
       } else {
-        setErrorMessage('Invalid QR code data or network error.');
+        setValidationMessage("An unknown error occurred.");
       }
-      console.error("QR Code validation error:", err);
-    } finally {
-        // Automatically restart scanning after a delay, regardless of success/fail
-        setTimeout(() => {
-            setErrorMessage('');
-            setScanStatus('idle');
-            // Check if user is still on this page and wants to continue scanning
-            if (!isScanning) { // Ensure scanner is not already running
-                 startScanner(); // Restart if not already scanning
-            }
-        }, 3000); // Clear message and restart after 3 seconds
-    }
-  }, [user, isScanning]);
-
-
-  // Callback for QR code scan error
-  const onScanError = useCallback((errorMessage) => {
-    // html5-qrcode calls this continuously if no QR is found.
-    // Only log significant errors, not just 'no QR found'.
-    // console.warn("QR Scan Error:", errorMessage);
-  }, []);
-
-  const startScanner = useCallback(() => {
-    if (isScanning) {
-        console.log("Scanner already running, skipping start.");
-        return;
-    }
-    
-    // Clear any previous scanner instance
-    if (html5QrCodeScannerRef.current) {
-        html5QrCodeScannerRef.current.clear().catch(e => console.warn("Failed to clear previous scanner on start:", e));
-        html5QrCodeScannerRef.current = null;
+      console.error("Validation Error:", err);
     }
 
+    // Reset after a delay to allow for the next scan
+    setTimeout(() => {
+        setValidationStatus('idle');
+        setValidationMessage('Ready for next scan...');
+        setScanResult(null);
+    }, 3500);
+
+  }, [validationStatus]);
+
+  const handleScanError = (error) => {
+    // This is called frequently, so we only log it for debugging
+    // console.error("QR Scanner Error:", error);
+  };
+
+  useEffect(() => {
     // Initialize the scanner
-    html5QrCodeScannerRef.current = new Html5QrcodeScanner(
-      "reader", // Element ID where the scanner will be rendered
-      { fps: fps, qrbox: qrboxConfig, disableFlip: false }, // disableFlip false is good for mobile
+    const scanner = new Html5QrcodeScanner(
+      'reader',
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        rememberLastUsedCamera: true,
+      },
       /* verbose= */ false
     );
-    
-    html5QrCodeScannerRef.current.render(onScanSuccess, onScanError);
-    setIsScanning(true);
-    setScanStatus('idle');
-    setErrorMessage('Camera ready. Point at a QR code.');
-  }, [onScanSuccess, onScanError, isScanning]);
 
-  const stopScanner = useCallback(async () => {
-    if (html5QrCodeScannerRef.current && isScanning) {
-      try {
-        await html5QrCodeScannerRef.current.clear();
-        console.log("Scanner stopped.");
-      } catch (e) {
-        console.warn("Failed to stop scanner:", e);
-      } finally {
-        setIsScanning(false);
-        setScanStatus('idle');
-      }
-    }
-  }, [isScanning]);
+    scanner.render(handleScanSuccess, handleScanError);
+    scannerRef.current = scanner;
+    setValidationMessage('Ready to scan. Point camera at a QR code.');
 
-  // Effect to manage scanner lifecycle
-  useEffect(() => {
-    startScanner(); // Start scanner when component mounts
 
+    // Cleanup function to stop the scanner when the component unmounts
     return () => {
-      stopScanner(); // Stop scanner when component unmounts
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(error => {
+          console.error("Failed to clear html5QrcodeScanner on unmount.", error);
+        });
+      }
     };
-  }, [startScanner, stopScanner]); // Only run on mount and unmount
-
-  const getStatusMessage = () => {
-    switch (scanStatus) {
-      case 'idle':
-        return isScanning ? 'Camera ready. Point at a QR code.' : 'Scanner stopped.';
-      case 'scanning':
-        return 'Processing scan...';
-      case 'success':
-        return <span className="text-green-400 font-bold">{errorMessage}</span>;
-      case 'fail':
-        return <span className="text-red-400 font-bold">{errorMessage}</span>;
-      default:
-        return '';
-    }
-  };
+  }, [handleScanSuccess]); // Rerun effect if the success handler changes
 
   return (
     <>
       <Navbar />
-      <div className="min-h-[calc(100vh-64px)] bg-gradient-to-br from-gray-900 to-purple-950 flex flex-col items-center justify-center p-6">
-        <h1 className="text-4xl font-extrabold text-white mb-8">Coupon Validation Station</h1>
+      <div className="flex flex-col items-center justify-center p-6 min-h-[calc(100vh-64px)] bg-gray-900">
+        <div className="w-full max-w-lg bg-gray-800 rounded-2xl shadow-2xl p-8 border border-purple-800">
+          <h1 className="text-3xl font-bold text-white mb-2 text-center">Volunteer Scanning Station</h1>
+          <p className="text-gray-400 mb-6 text-center">Logged in as: {user?.username}</p>
 
-        <div className="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-lg text-center relative overflow-hidden">
-          <div className="mb-6">
-            <div id="reader" className="w-full bg-gray-700 rounded-md overflow-hidden">
-              {/* The QR code scanner will be rendered here */}
+          <div id="reader" className="w-full rounded-lg overflow-hidden" />
+
+          <div className="mt-6 text-center p-4 rounded-lg h-24 flex items-center justify-center"
+               style={{
+                 backgroundColor: validationStatus === 'success' ? '#10B981' : validationStatus === 'error' ? '#EF4444' : '#374151'
+               }}>
+            <div>
+                <p className="text-lg font-semibold text-white">{validationMessage}</p>
+                {scanResult && (
+                    <p className="text-sm text-gray-200">Event: {scanResult.event_name}</p>
+                )}
             </div>
-            {!isScanning && (
-                <p className="text-gray-400 mt-4">Scanner is not active. Click "Start Scan" to begin.</p>
-            )}
           </div>
-          
-          <p className={`text-lg mb-4 ${scanStatus === 'success' ? 'text-green-400' : scanStatus === 'fail' ? 'text-red-400' : 'text-gray-300'}`}>
-            {getStatusMessage()}
-          </p>
-
-          <div className="flex justify-center space-x-4 mt-6">
-            <button
-              onClick={isScanning ? stopScanner : startScanner}
-              className={`px-6 py-3 rounded-md font-bold transition-colors duration-300 ${isScanning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white`}
-            >
-              <i className={`fas ${isScanning ? 'fa-stop-circle' : 'fa-play-circle'} mr-2`}></i>
-              {isScanning ? 'Stop Scan' : 'Start Scan'}
-            </button>
-          </div>
-          <p className="text-sm text-gray-500 mt-4">Note: If camera doesn't start, check browser permissions.</p>
         </div>
       </div>
     </>
