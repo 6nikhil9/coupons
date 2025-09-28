@@ -10,6 +10,9 @@ router.get('/dashboard-stats', protect, authorize('admin'), eventController.getD
 // Route for admin to get their events (could also be part of a general event route)
 router.get('/events', protect, authorize('admin'), eventController.getEvents);
 
+// Route for admin to get upcoming events
+router.get('/upcoming-events', protect, authorize('admin'), eventController.getUpcomingEvents);
+
 // You can add other admin-specific dashboard data routes here
 // router.get('/users-overview', protect, authorize('admin'), adminController.getUsersOverview);
 

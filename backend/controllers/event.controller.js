@@ -227,3 +227,14 @@ exports.getDashboardStats = async (req, res, next) => {
         next(error);
     }
 };
+// @desc    Get upcoming events (for admin dashboard)
+// @route   GET /api/admin/upcoming-events
+// @access  Private (Admin)
+exports.getUpcomingEvents = async (req, res, next) => {
+    try {
+        const events = await Event.find({ organizer: req.user.id, date: { $gte: new Date() } }).sort({ date: 1 });
+        res.status(200).json(events);
+    } catch (error) {
+        next(error);
+    }
+};
