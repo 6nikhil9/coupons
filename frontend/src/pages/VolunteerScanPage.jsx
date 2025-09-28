@@ -1,130 +1,182 @@
 // src/pages/VolunteerScanPage.jsx
-import React, { useState, useEffect, useRef } from 'react';
-import QRScanner from '../components/volunteer/QRScanner'; // Import the new QRScanner component
+import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
+import { Html5QrcodeScanner } from 'html5-qrcode'; // Import Html5QrcodeScanner
 import api from '../services/api';
+import Navbar from '../components/common/Navbar';
+import { AuthContext } from '../context/AuthContext';
 
 function VolunteerScanPage() {
-  const [scanResult, setScanResult] = useState(null); // Raw QR data
-  const [validationStatus, setValidationStatus] = useState(null); // 'success', 'error'
-  const [validationMessage, setValidationMessage] = useState('');
-  const [couponDetails, setCouponDetails] = useState(null); // Details from backend
-  const [isScanning, setIsScanning] = useState(true); // Control scanner state
+  const [scanStatus, setScanStatus] = useState('idle'); // 'idle', 'scanning', 'success', 'fail'
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isScanning, setIsScanning] = useState(false); // Controls scanner lifecycle
+  const html5QrCodeScannerRef = useRef(null); // Ref for the scanner instance
+  const { user } = useContext(AuthContext);
 
-  // Ref to directly control the QRScanner methods (pause/resume)
-  // This ref pattern is common for imperative interactions with child components
-  const qrScannerRef = useRef(); 
+  const qrboxConfig = {
+    width: 250,
+    height: 250,
+  };
+  const fps = 10;
 
-  // Callback for when QR code is successfully scanned by the child QRScanner component
-  const handleScanSuccess = async (decodedText) => {
-    console.log(`QR Code scanned: ${decodedText}`);
-    setScanResult(decodedText);
-    setValidationStatus(null); // Reset previous status
-    setValidationMessage('Validating coupon...');
-    setCouponDetails(null);
-    setIsScanning(false); // Stop scanning temporarily
-
-    // Manually pause the scanner using its ref if it had an imperative method
-    // If QRScanner component manages its own internal pause/resume on success, this might not be needed.
-    // However, it's good to have for explicit control from parent.
-    if (qrScannerRef.current && typeof qrScannerRef.current.pauseScanner === 'function') {
-      qrScannerRef.current.pauseScanner();
+  // Callback for successful QR code scan
+  const onScanSuccess = useCallback(async (decodedText, decodedResult) => {
+    // Stop scanning once a QR code is detected
+    if (html5QrCodeScannerRef.current) {
+        try {
+            await html5QrCodeScannerRef.current.clear(); // Stop camera and clear scanner
+        } catch (error) {
+            console.warn("Failed to clear scanner:", error);
+        }
     }
+    setIsScanning(false); // Update state
+
+    setScanStatus('scanning');
+    setErrorMessage('');
 
     try {
-      // Assuming decodedText contains { event_id, coupon_id, secureHash } JSON string
-      const parsedData = JSON.parse(decodedText); 
-      const { event_id, coupon_id, secureHash } = parsedData;
+      const qrPayload = JSON.parse(decodedText); // Expecting JSON from QR code
 
       const response = await api.post('/coupons/validate', {
-        eventId: event_id,
-        couponId: coupon_id,
-        secureHash: secureHash, // Send secureHash for backend validation
+        eventId: qrPayload.event_id,
+        couponId: qrPayload.coupon_id,
+        secureHash: qrPayload.secureHash,
+        validatorUsername: user ? user.username : 'unknown_validator',
       });
 
       if (response.data.valid) {
-        setValidationStatus('success');
-        setValidationMessage('Coupon Valid! Meal Served.');
-        setCouponDetails(response.data.coupon); // Backend returns updated coupon details
+        setScanStatus('success');
+        setErrorMessage(`Coupon ${qrPayload.coupon_id} Validated Successfully!`);
       } else {
-        setValidationStatus('error');
-        setValidationMessage(response.data.message || 'Invalid or Already Redeemed Coupon.');
-        setCouponDetails(null);
+        setScanStatus('fail');
+        setErrorMessage(response.data.message || 'Coupon validation failed.');
       }
     } catch (err) {
-      console.error("Validation error:", err);
-      setValidationStatus('error');
-      if (err.response && err.response.data && err.response.data.message) {
-        setValidationMessage(err.response.data.message);
+      setScanStatus('fail');
+      if (err instanceof SyntaxError) {
+        setErrorMessage('Invalid QR code format (expected JSON).');
+      } else if (err.response && err.response.data && err.response.data.message) {
+        setErrorMessage(`Validation Error: ${err.response.data.message}`);
       } else {
-        setValidationMessage('Scan error or invalid QR format.');
+        setErrorMessage('Invalid QR code data or network error.');
+      }
+      console.error("QR Code validation error:", err);
+    } finally {
+        // Automatically restart scanning after a delay, regardless of success/fail
+        setTimeout(() => {
+            setErrorMessage('');
+            setScanStatus('idle');
+            // Check if user is still on this page and wants to continue scanning
+            if (!isScanning) { // Ensure scanner is not already running
+                 startScanner(); // Restart if not already scanning
+            }
+        }, 3000); // Clear message and restart after 3 seconds
+    }
+  }, [user, isScanning]);
+
+
+  // Callback for QR code scan error
+  const onScanError = useCallback((errorMessage) => {
+    // html5-qrcode calls this continuously if no QR is found.
+    // Only log significant errors, not just 'no QR found'.
+    // console.warn("QR Scan Error:", errorMessage);
+  }, []);
+
+  const startScanner = useCallback(() => {
+    if (isScanning) {
+        console.log("Scanner already running, skipping start.");
+        return;
+    }
+    
+    // Clear any previous scanner instance
+    if (html5QrCodeScannerRef.current) {
+        html5QrCodeScannerRef.current.clear().catch(e => console.warn("Failed to clear previous scanner on start:", e));
+        html5QrCodeScannerRef.current = null;
+    }
+
+    // Initialize the scanner
+    html5QrCodeScannerRef.current = new Html5QrcodeScanner(
+      "reader", // Element ID where the scanner will be rendered
+      { fps: fps, qrbox: qrboxConfig, disableFlip: false }, // disableFlip false is good for mobile
+      /* verbose= */ false
+    );
+    
+    html5QrCodeScannerRef.current.render(onScanSuccess, onScanError);
+    setIsScanning(true);
+    setScanStatus('idle');
+    setErrorMessage('Camera ready. Point at a QR code.');
+  }, [onScanSuccess, onScanError, isScanning]);
+
+  const stopScanner = useCallback(async () => {
+    if (html5QrCodeScannerRef.current && isScanning) {
+      try {
+        await html5QrCodeScannerRef.current.clear();
+        console.log("Scanner stopped.");
+      } catch (e) {
+        console.warn("Failed to stop scanner:", e);
+      } finally {
+        setIsScanning(false);
+        setScanStatus('idle');
       }
     }
-  };
+  }, [isScanning]);
 
-  // Callback for scanning errors (e.g., camera not found, but not common QR errors)
-  const handleScanError = (errorMessage) => {
-    // console.error(errorMessage); // Log errors but don't show to user constantly
-    // You might want to display a message if the camera fails to start, for example.
-    // if (!isScanning && errorMessage.includes("Camera access")) { ... }
-  };
+  // Effect to manage scanner lifecycle
+  useEffect(() => {
+    startScanner(); // Start scanner when component mounts
 
-  const handleScanNext = () => {
-    setScanResult(null);
-    setValidationStatus(null);
-    setValidationMessage('');
-    setCouponDetails(null);
-    setIsScanning(true); // Restart scanning
-    
-    // Resume the scanner
-    if (qrScannerRef.current && typeof qrScannerRef.current.resumeScanner === 'function') {
-      qrScannerRef.current.resumeScanner();
+    return () => {
+      stopScanner(); // Stop scanner when component unmounts
+    };
+  }, [startScanner, stopScanner]); // Only run on mount and unmount
+
+  const getStatusMessage = () => {
+    switch (scanStatus) {
+      case 'idle':
+        return isScanning ? 'Camera ready. Point at a QR code.' : 'Scanner stopped.';
+      case 'scanning':
+        return 'Processing scan...';
+      case 'success':
+        return <span className="text-green-400 font-bold">{errorMessage}</span>;
+      case 'fail':
+        return <span className="text-red-400 font-bold">{errorMessage}</span>;
+      default:
+        return '';
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-screen bg-gray-900 text-white p-6">
-      <h1 className="text-3xl font-bold mb-8">Coupon Validation Station</h1>
+    <>
+      <Navbar />
+      <div className="min-h-[calc(100vh-64px)] bg-gradient-to-br from-gray-900 to-purple-950 flex flex-col items-center justify-center p-6">
+        <h1 className="text-4xl font-extrabold text-white mb-8">Coupon Validation Station</h1>
 
-      {/* Render the QRScanner component */}
-      <QRScanner
-        ref={qrScannerRef} // Attach ref to the scanner component
-        onScanSuccess={handleScanSuccess}
-        onScanError={handleScanError}
-        qrBoxSize={250}
-        fps={10}
-      />
-
-      {/* Validation Result Display */}
-      <div className="mt-8 w-full max-w-sm p-6 rounded-lg shadow-xl bg-gray-800">
-        {validationMessage && (
-          <div
-            className={`p-4 rounded-md ${
-              validationStatus === 'success' ? 'bg-green-600' : validationStatus === 'error' ? 'bg-red-600' : 'bg-blue-600'
-            } text-white text-lg font-semibold text-center mb-4`}
-          >
-            {validationMessage}
+        <div className="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-lg text-center relative overflow-hidden">
+          <div className="mb-6">
+            <div id="reader" className="w-full bg-gray-700 rounded-md overflow-hidden">
+              {/* The QR code scanner will be rendered here */}
+            </div>
+            {!isScanning && (
+                <p className="text-gray-400 mt-4">Scanner is not active. Click "Start Scan" to begin.</p>
+            )}
           </div>
-        )}
+          
+          <p className={`text-lg mb-4 ${scanStatus === 'success' ? 'text-green-400' : scanStatus === 'fail' ? 'text-red-400' : 'text-gray-300'}`}>
+            {getStatusMessage()}
+          </p>
 
-        {couponDetails && validationStatus === 'success' && (
-          <div className="text-gray-300 text-center">
-            <p className="mb-2"><strong>Event:</strong> {couponDetails.event_name}</p>
-            <p className="mb-2"><strong>Coupon ID:</strong> {couponDetails.coupon_id}</p>
-            <p><strong>Food:</strong> {couponDetails.food_details || 'N/A'}</p>
+          <div className="flex justify-center space-x-4 mt-6">
+            <button
+              onClick={isScanning ? stopScanner : startScanner}
+              className={`px-6 py-3 rounded-md font-bold transition-colors duration-300 ${isScanning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white`}
+            >
+              <i className={`fas ${isScanning ? 'fa-stop-circle' : 'fa-play-circle'} mr-2`}></i>
+              {isScanning ? 'Stop Scan' : 'Start Scan'}
+            </button>
           </div>
-        )}
-
-        {/* Scan Next Button */}
-        {validationStatus && (
-          <button
-            onClick={handleScanNext}
-            className="w-full mt-6 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-md transition-colors duration-300"
-          >
-            Scan Next Coupon
-          </button>
-        )}
+          <p className="text-sm text-gray-500 mt-4">Note: If camera doesn't start, check browser permissions.</p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

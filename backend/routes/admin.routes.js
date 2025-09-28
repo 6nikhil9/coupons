@@ -1,19 +1,16 @@
 // backend/routes/admin.routes.js
 const express = require('express');
 const router = express.Router();
-const eventController = require('../controllers/event.controller'); // Still use eventController for event-related data
+const eventController = require('../controllers/event.controller');
 const { protect, authorize } = require('../middleware/auth.middleware');
 
 // Route for admin dashboard statistics
 router.get('/dashboard-stats', protect, authorize('admin'), eventController.getDashboardStats);
 
-// Route for admin to get their events (could also be part of a general event route)
+// Route for admin to get their events
 router.get('/events', protect, authorize('admin'), eventController.getEvents);
 
-// Route for admin to get upcoming events
-router.get('/upcoming-events', protect, authorize('admin'), eventController.getUpcomingEvents);
-
-// You can add other admin-specific dashboard data routes here
-// router.get('/users-overview', protect, authorize('admin'), adminController.getUsersOverview);
+// NEW: Route for admin to download the QR code PDF for a specific event
+router.get('/events/:eventId/download-pdf', protect, authorize('admin'), eventController.downloadQrPdf);
 
 module.exports = router;

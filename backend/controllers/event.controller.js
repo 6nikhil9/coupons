@@ -1,16 +1,16 @@
 // backend/controllers/event.controller.js
 const Event = require('../models/Event');
 const Coupon = require('../models/Coupon');
-const User = require('../models/User'); // To populate organizer details if needed
-const { generateSecureHash, createQrCodeData } = require('../utils/qrCodeGenerator');
-const QRCode = require('qrcode'); // For generating actual QR code images (optional for download)
+const { createQrCodeData } = require('../utils/qrCodeGenerator');
+const PDFDocument = require('pdfkit');
+const QRCode = require('qrcode');
 
 // @desc    Get all events (for admin dashboard)
-// @route   GET /api/events
+// @route   GET /api/events or /api/admin/events
 // @access  Private (Admin)
 exports.getEvents = async (req, res, next) => {
     try {
-        const events = await Event.find({ organizer: req.user.id }).sort({ date: 1 }); // Only show events created by this admin
+        const events = await Event.find({ organizer: req.user.id }).sort({ date: -1 });
         res.status(200).json(events);
     } catch (error) {
         next(error);
@@ -23,16 +23,12 @@ exports.getEvents = async (req, res, next) => {
 exports.getEventById = async (req, res, next) => {
     try {
         const event = await Event.findById(req.params.id);
-
         if (!event) {
             return res.status(404).json({ message: 'Event not found' });
         }
-
-        // Ensure only the organizer can view their event
         if (event.organizer.toString() !== req.user.id) {
             return res.status(403).json({ message: 'Not authorized to view this event' });
         }
-
         res.status(200).json(event);
     } catch (error) {
         next(error);
@@ -44,18 +40,13 @@ exports.getEventById = async (req, res, next) => {
 // @access  Private (Admin)
 exports.createEvent = async (req, res, next) => {
     const { name, date, venue, description } = req.body;
-
-    if (!name || !date || !venue) {
-        return res.status(400).json({ message: 'Please include all required event fields: name, date, venue' });
-    }
-
     try {
         const event = await Event.create({
             name,
             date,
             venue,
             description,
-            organizer: req.user.id // Set the organizer to the logged-in user
+            organizer: req.user.id
         });
         res.status(201).json(event);
     } catch (error) {
@@ -69,21 +60,13 @@ exports.createEvent = async (req, res, next) => {
 exports.updateEvent = async (req, res, next) => {
     try {
         let event = await Event.findById(req.params.id);
-
         if (!event) {
             return res.status(404).json({ message: 'Event not found' });
         }
-
-        // Ensure only the organizer can update their event
         if (event.organizer.toString() !== req.user.id) {
             return res.status(403).json({ message: 'Not authorized to update this event' });
         }
-
-        event = await Event.findByIdAndUpdate(req.params.id, req.body, {
-            new: true, // Return the updated document
-            runValidators: true // Run schema validators on update
-        });
-
+        event = await Event.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
         res.status(200).json(event);
     } catch (error) {
         next(error);
@@ -96,22 +79,15 @@ exports.updateEvent = async (req, res, next) => {
 exports.deleteEvent = async (req, res, next) => {
     try {
         const event = await Event.findById(req.params.id);
-
         if (!event) {
             return res.status(404).json({ message: 'Event not found' });
         }
-
-        // Ensure only the organizer can delete their event
         if (event.organizer.toString() !== req.user.id) {
             return res.status(403).json({ message: 'Not authorized to delete this event' });
         }
-
-        // Optionally, also delete all associated coupons
         await Coupon.deleteMany({ event: req.params.id });
-
-        await Event.deleteOne({ _id: req.params.id }); // Use deleteOne for clarity with findById
-
-        res.status(200).json({ message: 'Event and associated coupons removed' });
+        await Event.deleteOne({ _id: req.params.id });
+        res.status(200).json({ message: 'Event removed' });
     } catch (error) {
         next(error);
     }
@@ -125,7 +101,7 @@ exports.generateCoupons = async (req, res, next) => {
     const { eventId } = req.params;
 
     if (!count || count <= 0) {
-        return res.status(400).json({ message: 'Please specify a valid number of coupons to generate.' });
+        return res.status(400).json({ message: 'Please specify a valid number of coupons.' });
     }
 
     try {
@@ -133,49 +109,29 @@ exports.generateCoupons = async (req, res, next) => {
         if (!event) {
             return res.status(404).json({ message: 'Event not found.' });
         }
-
-        // Ensure only the organizer can generate coupons for their event
         if (event.organizer.toString() !== req.user.id) {
-            return res.status(403).json({ message: 'Not authorized to generate coupons for this event.' });
+            return res.status(403).json({ message: 'Not authorized.' });
         }
 
         const generatedCoupons = [];
-        for (let i = 0; i < count; i++) {
-            const secureHash = generateSecureHash();
-            // Generate a unique short ID for each coupon
-            // This is a basic approach. For very large counts, you might need a more robust system.
-            const existingCouponCount = await Coupon.countDocuments({ event: eventId });
-            const coupon_id_short = `C${(existingCouponCount + i + 1).toString().padStart(3, '0')}`;
+        const existingCouponCount = await Coupon.countDocuments({ event: eventId });
 
-            const newCoupon = await Coupon.create({
+        for (let i = 0; i < count; i++) {
+            const secureHash = require('crypto').randomBytes(32).toString('hex');
+            const coupon_id_short = `C${(existingCouponCount + i + 1).toString().padStart(4, '0')}`;
+            
+            generatedCoupons.push({
                 event: event._id,
                 coupon_id_short,
-                secureHash,
-                is_redeemed: false
+                secureHash
             });
-            generatedCoupons.push(newCoupon);
         }
-
-        // For each generated coupon, create the QR code data string
-        const qrCodesData = generatedCoupons.map(coupon =>
-            createQrCodeData(coupon.event, coupon.coupon_id_short, coupon.secureHash)
-        );
-
-        // Optionally, you can generate actual QR code images here
-        // For demonstration, we'll just return the data that the frontend QR scanner expects.
-        // If you needed to generate a PDF of QRs on the backend:
-        // const qrImages = await Promise.all(qrCodesData.map(data => QRCode.toDataURL(data)));
+        
+        await Coupon.insertMany(generatedCoupons);
 
         res.status(201).json({
             message: `${count} coupons generated successfully!`,
-            coupons: generatedCoupons.map(c => ({
-                id: c._id,
-                coupon_id_short: c.coupon_id_short,
-                is_redeemed: c.is_redeemed,
-                qr_data: createQrCodeData(c.event, c.coupon_id_short, c.secureHash) // Data to embed in QR
-            }))
         });
-
     } catch (error) {
         next(error);
     }
@@ -185,20 +141,12 @@ exports.generateCoupons = async (req, res, next) => {
 // @route   GET /api/events/:eventId/coupons
 // @access  Private (Admin)
 exports.getCouponsForEvent = async (req, res, next) => {
-    const { eventId } = req.params;
-
     try {
-        const event = await Event.findById(eventId);
-        if (!event) {
-            return res.status(404).json({ message: 'Event not found.' });
+        const event = await Event.findById(req.params.eventId);
+        if (!event || event.organizer.toString() !== req.user.id) {
+            return res.status(403).json({ message: 'Not authorized.' });
         }
-
-        if (event.organizer.toString() !== req.user.id) {
-            return res.status(403).json({ message: 'Not authorized to view coupons for this event.' });
-        }
-
-        const coupons = await Coupon.find({ event: eventId }).sort({ coupon_id_short: 1 });
-
+        const coupons = await Coupon.find({ event: req.params.eventId }).sort({ coupon_id_short: 1 });
         res.status(200).json(coupons);
     } catch (error) {
         next(error);
@@ -206,7 +154,7 @@ exports.getCouponsForEvent = async (req, res, next) => {
 };
 
 // @desc    Get dashboard stats
-// @route   GET /api/admin/dashboard-stats  (accessed via /api/events/dashboard-stats conceptually)
+// @route   GET /api/admin/dashboard-stats
 // @access  Private (Admin)
 exports.getDashboardStats = async (req, res, next) => {
     try {
@@ -227,13 +175,64 @@ exports.getDashboardStats = async (req, res, next) => {
         next(error);
     }
 };
-// @desc    Get upcoming events (for admin dashboard)
-// @route   GET /api/admin/upcoming-events
+
+
+// @desc    Generate and download QR code PDF for an event
+// @route   GET /api/admin/events/:eventId/download-pdf
 // @access  Private (Admin)
-exports.getUpcomingEvents = async (req, res, next) => {
+exports.downloadQrPdf = async (req, res, next) => {
     try {
-        const events = await Event.find({ organizer: req.user.id, date: { $gte: new Date() } }).sort({ date: 1 });
-        res.status(200).json(events);
+        const eventId = req.params.eventId;
+        const event = await Event.findById(eventId);
+
+        if (!event) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+        if (event.organizer.toString() !== req.user.id) {
+            return res.status(403).json({ message: 'Not authorized' });
+        }
+
+        const coupons = await Coupon.find({ event: eventId, is_redeemed: false }).sort({ coupon_id_short: 1 });
+        if (coupons.length === 0) {
+            return res.status(404).json({ message: 'No unredeemed coupons found for this event.' });
+        }
+
+        const doc = new PDFDocument({ margin: 30, size: 'A4' });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="event_${event.name.replace(/\s+/g, '_')}_coupons.pdf"`);
+        doc.pipe(res);
+
+        const qrSize = 120;
+        const margin = 20;
+        const couponsPerRow = 4;
+        const rowsPerPage = 5;
+        let couponCount = 0;
+
+        for (const coupon of coupons) {
+            if (couponCount > 0 && couponCount % (couponsPerRow * rowsPerPage) === 0) {
+                doc.addPage();
+            }
+
+            const rowIndex = Math.floor((couponCount % (couponsPerRow * rowsPerPage)) / couponsPerRow);
+            const colIndex = couponCount % couponsPerRow;
+            
+            const x = doc.page.margins.left + colIndex * (qrSize + margin);
+            const y = doc.page.margins.top + rowIndex * (qrSize + margin + 20); // Extra space for text
+
+            const qrDataString = createQrCodeData(coupon.event, coupon.coupon_id_short, coupon.secureHash);
+            const qrDataURL = await QRCode.toDataURL(qrDataString);
+
+            doc.rect(x, y, qrSize, qrSize + 20).stroke(); // Draw a box for the coupon
+            doc.image(qrDataURL, x + 10, y + 5, { width: qrSize - 20 });
+            doc.fontSize(10).text(event.name, x, y + qrSize + 5, { width: qrSize, align: 'center' });
+            doc.fontSize(8).text(coupon.coupon_id_short, x, y + qrSize + 15, { width: qrSize, align: 'center' });
+            
+            couponCount++;
+        }
+
+        doc.end();
+
     } catch (error) {
         next(error);
     }

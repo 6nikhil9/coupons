@@ -22,4 +22,9 @@ router.get('/:eventId/coupons', protect, authorize('admin'), eventController.get
 
 // Dashboard stats (conceptually under events, for admin view)
 
+// @desc    Download QR code PDF for an event
+// @route   GET /api/events/:eventId/qr-pdf
+// @access  Private/Admin
+router.get('/:eventId/qr-pdf', protect, authorize('admin'), eventController.downloadQrPdf);
+
 module.exports = router;

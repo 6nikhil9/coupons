@@ -1,9 +1,9 @@
 // src/components/admin/AdminDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../../services/api'; // Assuming an API service
+import api from '../../services/api';
+import EventCard from './EventCard';
 
-import EventCard from './EventCard'; // Import the EventCard component
 function AdminDashboard() {
   const [dashboardStats, setDashboardStats] = useState({
     totalEvents: 0,
@@ -19,15 +19,17 @@ function AdminDashboard() {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        // Mock API calls
-        const stats = await api.get('/admin/dashboard-stats'); // { totalEvents, activeEvents, ... }
-        const events = await api.get('/admin/upcoming-events'); // [{ id, name, date, status }]
+        setError('');
+        
+        // Corrected API endpoints to match your backend routes
+        const statsResponse = await api.get('/admin/dashboard-stats');
+        const eventsResponse = await api.get('/admin/events');
 
-        setDashboardStats(stats.data);
-        setUpcomingEvents(events.data);
+        setDashboardStats(statsResponse.data);
+        setUpcomingEvents(eventsResponse.data);
       } catch (err) {
         setError('Failed to load dashboard data.');
-        console.error(err);
+        console.error("Dashboard data fetch error:", err);
       } finally {
         setLoading(false);
       }
@@ -37,10 +39,10 @@ function AdminDashboard() {
   }, []);
 
   if (loading) return <div className="text-center text-gray-400">Loading dashboard...</div>;
-  if (error) return <div className="text-center text-red-400">{error}</div>;
+  if (error) return <div className="text-center text-red-400 p-4 bg-red-900/50 rounded">{error}</div>;
 
   return (
-    <div className="p-6">
+    <div>
       <h1 className="text-3xl font-bold text-white mb-8">Admin Dashboard</h1>
 
       {/* Summary Cards */}
@@ -52,7 +54,7 @@ function AdminDashboard() {
       </div>
 
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-semibold text-white">Upcoming Events</h2>
+        <h2 className="text-2xl font-semibold text-white">Your Events</h2>
         <Link
           to="/admin/events/new"
           className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-300 flex items-center"
@@ -65,10 +67,10 @@ function AdminDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {upcomingEvents.length > 0 ? (
           upcomingEvents.map((event) => (
-            <EventCard key={event._id} event={event} /> // Re-use EventCard component
+            <EventCard key={event._id} event={event} />
           ))
         ) : (
-          <p className="text-gray-400 col-span-full">No upcoming events. Start by creating one!</p>
+          <p className="text-gray-400 col-span-full">No events found. Start by creating one!</p>
         )}
       </div>
     </div>
@@ -89,6 +91,5 @@ const StatCard = ({ title, value, icon, color }) => (
     </div>
   </div>
 );
-
 
 export default AdminDashboard;

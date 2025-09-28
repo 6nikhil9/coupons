@@ -4,18 +4,19 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { isAuthenticated, user } = useContext(AuthContext);
+  const { isAuthenticated, user, loading } = useContext(AuthContext);
   const location = useLocation();
 
+  if (loading) {
+    return <div className="flex justify-center items-center h-screen text-white">Authenticating...</div>;
+  }
+
   if (!isAuthenticated) {
-    // Not logged in, redirect to home page
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    // Logged in but not authorized for this role
-    // You could redirect to a 403 page or dashboard
-    return <Navigate to="/" state={{ from: location, unauthorized: true }} replace />;
+    return <Navigate to="/" state={{ unauthorized: true }} replace />;
   }
 
   return children;

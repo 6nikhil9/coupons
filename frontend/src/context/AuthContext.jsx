@@ -5,50 +5,47 @@ import api from '../services/api';
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // { id, username, role }
+  const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Attempt to load user from localStorage/token on app start
   useEffect(() => {
-    const loadUser = async () => {
+    const loadUserFromToken = async () => {
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          // Verify token with backend
-          const response = await api.get('/auth/me'); // Endpoint to get user based on token
+          const response = await api.get('/auth/me');
           setUser(response.data);
           setIsAuthenticated(true);
         } catch (error) {
-          console.error('Token verification failed:', error);
-          localStorage.removeItem('token'); // Invalid token
+          console.error('Token is invalid or expired. Logging out.');
+          localStorage.removeItem('token');
         }
       }
       setLoading(false);
     };
-    loadUser();
+    loadUserFromToken();
   }, []);
 
-  const login = async (username, password, requestedRole) => {
+  const login = async (username, password) => {
+    setLoading(true);
     try {
       const response = await api.post('/auth/login', { username, password });
       const { token, user: userData } = response.data;
-
-      // Basic role check (backend should also enforce this)
-      if (requestedRole && userData.role !== requestedRole) {
-        throw new Error("Unauthorized role.");
-      }
-
+      
       localStorage.setItem('token', token);
       setUser(userData);
       setIsAuthenticated(true);
-      return true;
+      setLoading(false);
+      return true; // Indicate success
     } catch (error) {
       console.error('Login failed:', error);
-      setIsAuthenticated(false);
-      setUser(null);
+      // Clear any lingering state
       localStorage.removeItem('token');
-      return false;
+      setUser(null);
+      setIsAuthenticated(false);
+      setLoading(false);
+      throw error; // Re-throw the error so the LoginForm can catch it and display a message
     }
   };
 
@@ -58,12 +55,8 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
   };
 
-  if (loading) {
-    return <div className="flex justify-center items-center min-h-screen bg-gray-900 text-white">Loading authentication...</div>;
-  }
-
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
